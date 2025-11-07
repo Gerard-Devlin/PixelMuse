@@ -816,31 +816,34 @@ export default function ASCIIPainter() {
                 open={showDialog}
                 onOpenChange={setShowDialog}>
                 <DialogContent
-                    className="w-full max-w-none max-h-[90vh] overflow-hidden bg-white text-slate-900 border shadow-2xl rounded-3xl p-0"
+                    className={`w-full max-w-none overflow-hidden bg-white text-slate-900 border shadow-2xl p-0 flex flex-col ${
+                        isMobile
+                            ? "h-screen max-h-screen rounded-none sm:rounded-none left-0 top-0 translate-x-0 translate-y-0"
+                            : "max-h-[90vh] rounded-3xl"
+                    }`}
                     style={{
-                        width: `min(95vw, ${ASCII_DIALOG_MAX_WIDTH}px)`,
+                        width: dialogWidth,
+                        maxHeight: dialogMaxHeight,
+                        height: isMobile ? "100vh" : undefined,
                     }}>
-                    <div className="flex flex-col h-full max-h-[90vh]">
-                        <DialogHeader className="px-6 pt-6 pb-3 border-b">
+                    <div className={dialogWrapperClass}>
+                        <DialogHeader
+                            className={`${dialogHeaderClass} ${
+                                isMobile ? "text-center sm:text-center" : ""
+                            }`}>
                             <DialogTitle>
                                 ASCII Conversion
                                 Result
                             </DialogTitle>
                         </DialogHeader>
-                        <div className="flex-1 overflow-auto px-6 py-5 space-y-5">
+                        <div className={dialogBodyClass}>
                             <div>
                                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
                                     Monochrome
                                 </p>
                                 <pre
                                     className="whitespace-pre font-mono bg-slate-50 p-4 rounded-lg text-slate-900 border border-slate-200 overflow-auto max-w-full shadow-inner"
-                                    style={{
-                                        fontSize: `${asciiFontSize}px`,
-                                        lineHeight:
-                                            asciiLineHeight,
-                                        maxWidth: `${ASCII_TARGET_WIDTH}px`,
-                                        margin: "0 auto",
-                                    }}>
+                                    style={previewStyle}>
                                     {ascii}
                                 </pre>
                             </div>
@@ -852,13 +855,8 @@ export default function ASCIIPainter() {
                                     <div
                                         className="bg-slate-50 font-mono p-4 rounded-lg text-slate-900 border border-slate-200 overflow-auto max-w-full shadow-inner"
                                         style={{
-                                            whiteSpace:
-                                                "pre",
-                                            fontSize: `${asciiFontSize}px`,
-                                            lineHeight:
-                                                asciiLineHeight,
-                                            maxWidth: `${ASCII_TARGET_WIDTH}px`,
-                                            margin: "0 auto",
+                                            ...previewStyle,
+                                            whiteSpace: "pre",
                                         }}
                                         dangerouslySetInnerHTML={{
                                             __html: colorAsciiHtml,
@@ -867,10 +865,14 @@ export default function ASCIIPainter() {
                                 </div>
                             )}
                         </div>
-                        <DialogFooter className="px-6 py-4 border-t flex justify-end gap-3 flex-wrap">
+                        <DialogFooter
+                            className={`${dialogFooterClass} ${
+                                isMobile ? "sm:flex-col sm:gap-2" : ""
+                            }`}>
                             <Button
                                 variant="outline"
-                                onClick={copyAscii}>
+                                onClick={copyAscii}
+                                className={isMobile ? "w-full justify-center" : undefined}>
                                 <Copy className="w-4 h-4 mr-1" />{" "}
                                 {!isMobile &&
                                     "Copy Text"}
@@ -879,7 +881,8 @@ export default function ASCIIPainter() {
                                 variant="outline"
                                 onClick={
                                     downloadAscii
-                                }>
+                                }
+                                className={isMobile ? "w-full justify-center" : undefined}>
                                 <FileText className="w-4 h-4 mr-1" />{" "}
                                 {!isMobile &&
                                     "Download TXT"}
@@ -890,6 +893,11 @@ export default function ASCIIPainter() {
                                         variant="outline"
                                         onClick={
                                             copyColorAscii
+                                        }
+                                        className={
+                                            isMobile
+                                                ? "w-full justify-center"
+                                                : undefined
                                         }>
                                         <Copy className="w-4 h-4 mr-1" />{" "}
                                         {!isMobile &&
@@ -899,6 +907,11 @@ export default function ASCIIPainter() {
                                         variant="outline"
                                         onClick={
                                             downloadColorAscii
+                                        }
+                                        className={
+                                            isMobile
+                                                ? "w-full justify-center"
+                                                : undefined
                                         }>
                                         <FileText className="w-4 h-4 mr-1" />{" "}
                                         {!isMobile &&
