@@ -1,6 +1,6 @@
 ﻿# PixelMuse
 
-![alt text](pixelmuse/public/logo.png)
+<img src="pixelmuse/public/logo.png" alt="alt text" style="zoom:33%;" />
 
 [![Vite](https://img.shields.io/badge/built%20with-Vite-646CFF?style=flat-square&logo=vite&logoColor=white)](https://vitejs.dev/) [![React](https://img.shields.io/badge/react-18-61DAFB?style=flat-square&logo=react&logoColor=white)](https://react.dev/) [![Tailwind CSS](https://img.shields.io/badge/styles-Tailwind%20CSS-38BDF8?style=flat-square&logo=tailwindcss&logoColor=white)](https://tailwindcss.com/) [![License](https://img.shields.io/github/license/Gerard-Devlin/PixelMuse?style=flat-square)](LICENSE) [![Deploy](https://img.shields.io/github/deployments/Gerard-Devlin/PixelMuse/github-pages?label=gh-pages&style=flat-square)](https://gerard-devlin.github.io/PixelMuse/)
 
