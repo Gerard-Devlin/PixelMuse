@@ -215,15 +215,22 @@ export default function ASCIIPainter() {
     const dialogFooterClass = isMobile
         ? "px-4 py-3 border-t flex flex-col gap-2"
         : "px-6 py-4 border-t flex justify-end gap-3 flex-wrap";
-    const previewStyle = useMemo(
+    const previewFrameClass =
+        "bg-slate-50 font-mono p-4 rounded-lg text-slate-900 border border-slate-200 overflow-auto max-w-full shadow-inner flex items-center justify-center";
+    const previewContainerStyle = useMemo(
+        () => ({
+            maxHeight: isMobile ? "45vh" : "60vh",
+        }),
+        [isMobile]
+    );
+    const previewContentStyle = useMemo(
         () => ({
             fontSize: `${asciiFontSize}px`,
             lineHeight: asciiLineHeight,
             maxWidth: isMobile
                 ? "100%"
                 : `${ASCII_TARGET_WIDTH}px`,
-            margin: isMobile ? "0" : "0 auto",
-            maxHeight: isMobile ? "45vh" : "60vh",
+            display: "inline-block",
         }),
         [asciiFontSize, asciiLineHeight, isMobile]
     );
@@ -841,11 +848,15 @@ export default function ASCIIPainter() {
                                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
                                     Monochrome
                                 </p>
-                                <pre
-                                    className="whitespace-pre font-mono bg-slate-50 p-4 rounded-lg text-slate-900 border border-slate-200 overflow-auto max-w-full shadow-inner"
-                                    style={previewStyle}>
-                                    {ascii}
-                                </pre>
+                                <div
+                                    className={previewFrameClass}
+                                    style={previewContainerStyle}>
+                                    <pre
+                                        className="whitespace-pre"
+                                        style={previewContentStyle}>
+                                        {ascii}
+                                    </pre>
+                                </div>
                             </div>
                             {colorAsciiHtml && (
                                 <div>
@@ -853,15 +864,18 @@ export default function ASCIIPainter() {
                                         Color Preview
                                     </p>
                                     <div
-                                        className="bg-slate-50 font-mono p-4 rounded-lg text-slate-900 border border-slate-200 overflow-auto max-w-full shadow-inner"
-                                        style={{
-                                            ...previewStyle,
-                                            whiteSpace: "pre",
-                                        }}
-                                        dangerouslySetInnerHTML={{
-                                            __html: colorAsciiHtml,
-                                        }}
-                                    />
+                                        className={previewFrameClass}
+                                        style={previewContainerStyle}>
+                                        <div
+                                            style={{
+                                                ...previewContentStyle,
+                                                whiteSpace: "pre",
+                                            }}
+                                            dangerouslySetInnerHTML={{
+                                                __html: colorAsciiHtml,
+                                            }}
+                                        />
+                                    </div>
                                 </div>
                             )}
                         </div>
