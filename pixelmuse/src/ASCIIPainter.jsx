@@ -32,6 +32,7 @@ import {
     FileText,
     Upload,
     Copy,
+    Github,
 } from "lucide-react";
 
 function drawDots(
@@ -187,6 +188,10 @@ export default function ASCIIPainter() {
     const fileRef = useRef(null);
     const drawing = useRef(false);
     const last = useRef(null);
+    const canvasCtxRef = useRef(null);
+    const artCtxRef = useRef(null);
+    const ghostCtxRef = useRef(null);
+    const resizeFrameRef = useRef(null);
 
     const [brushColor, setBrushColor] =
         useState("#000000");
@@ -283,47 +288,78 @@ export default function ASCIIPainter() {
     };
 
     useEffect(() => {
-        const checkMobile = () =>
-            setIsMobile(window.innerWidth < 768);
-        checkMobile();
-        window.addEventListener(
-            "resize",
-            checkMobile
-        );
-        return () =>
-            window.removeEventListener(
-                "resize",
-                checkMobile
-            );
-    }, []);
-
-    useEffect(() => {
         const c = canvasRef.current;
         const g = ghostRef.current;
         const a = artRef.current;
         if (!c || !g || !a) return;
-        const ctx = c.getContext("2d");
-        const resize = () => {
+        canvasCtxRef.current = c.getContext("2d");
+        artCtxRef.current = a.getContext("2d");
+        ghostCtxRef.current = g.getContext("2d", {
+            willReadFrequently: true,
+        });
+
+        const performResize = () => {
             const width = window.innerWidth;
             const height = window.innerHeight;
+
             c.width = width;
             c.height = height;
-            drawDots(ctx, width, height);
+            if (canvasCtxRef.current) {
+                drawDots(
+                    canvasCtxRef.current,
+                    width,
+                    height
+                );
+            }
+
             a.width = width;
             a.height = height;
-            const artCtx = a.getContext("2d");
-            artCtx.fillStyle = "#ffffff";
-            artCtx.fillRect(0, 0, width, height);
+            if (artCtxRef.current) {
+                artCtxRef.current.fillStyle =
+                    "#ffffff";
+                artCtxRef.current.fillRect(
+                    0,
+                    0,
+                    width,
+                    height
+                );
+            }
+
             g.width = width;
             g.height = height;
+
+            setIsMobile(width < 768);
         };
-        resize();
-        window.addEventListener("resize", resize);
-        return () =>
+
+        const handleResize = () => {
+            if (resizeFrameRef.current) {
+                cancelAnimationFrame(
+                    resizeFrameRef.current
+                );
+            }
+            resizeFrameRef.current =
+                requestAnimationFrame(
+                    performResize
+                );
+        };
+
+        handleResize();
+        window.addEventListener(
+            "resize",
+            handleResize
+        );
+
+        return () => {
             window.removeEventListener(
                 "resize",
-                resize
+                handleResize
             );
+            if (resizeFrameRef.current) {
+                cancelAnimationFrame(
+                    resizeFrameRef.current
+                );
+            }
+        };
     }, []);
 
     const getPos = (e) => {
@@ -341,8 +377,9 @@ export default function ASCIIPainter() {
     };
 
     const drawLine = (x1, y1, x2, y2) => {
-        const c = canvasRef.current;
-        const ctx = c.getContext("2d");
+        const ctx = canvasCtxRef.current;
+        const artCtx = artCtxRef.current;
+        if (!ctx || !artCtx) return;
         ctx.save();
         ctx.globalCompositeOperation = eraser
             ? "destination-out"
@@ -357,34 +394,36 @@ export default function ASCIIPainter() {
         ctx.lineTo(x2, y2);
         ctx.stroke();
         ctx.restore();
-        const art = artRef.current;
-        if (art) {
-            const artCtx = art.getContext("2d");
-            artCtx.save();
-            artCtx.globalCompositeOperation =
-                "source-over";
-            artCtx.strokeStyle = eraser
-                ? "#ffffff"
-                : brushColor;
-            artCtx.lineWidth = brushSize;
-            artCtx.lineCap = "round";
-            artCtx.beginPath();
-            artCtx.moveTo(x1, y1);
-            artCtx.lineTo(x2, y2);
-            artCtx.stroke();
-            artCtx.restore();
-        }
+
+        artCtx.save();
+        artCtx.globalCompositeOperation =
+            "source-over";
+        artCtx.strokeStyle = eraser
+            ? "#ffffff"
+            : brushColor;
+        artCtx.lineWidth = brushSize;
+        artCtx.lineCap = "round";
+        artCtx.beginPath();
+        artCtx.moveTo(x1, y1);
+        artCtx.lineTo(x2, y2);
+        artCtx.stroke();
+        artCtx.restore();
     };
 
     const clearCanvas = () => {
         const c = canvasRef.current;
-        const ctx = c.getContext("2d");
-        drawDots(ctx, c.width, c.height);
+        if (canvasCtxRef.current && c) {
+            drawDots(
+                canvasCtxRef.current,
+                c.width,
+                c.height
+            );
+        }
         const art = artRef.current;
-        if (art) {
-            const artCtx = art.getContext("2d");
-            artCtx.fillStyle = "#ffffff";
-            artCtx.fillRect(
+        if (art && artCtxRef.current) {
+            artCtxRef.current.fillStyle =
+                "#ffffff";
+            artCtxRef.current.fillRect(
                 0,
                 0,
                 art.width,
@@ -400,7 +439,11 @@ export default function ASCIIPainter() {
         const img = new Image();
         img.onload = () => {
             const c = canvasRef.current;
-            const ctx = c.getContext("2d");
+            const ctx = canvasCtxRef.current;
+            if (!ctx) {
+                URL.revokeObjectURL(url);
+                return;
+            }
             drawDots(ctx, c.width, c.height);
             const ratio = Math.min(
                 c.width / img.width,
@@ -418,17 +461,19 @@ export default function ASCIIPainter() {
                 newH
             );
             const art = artRef.current;
-            if (art) {
-                const artCtx =
-                    art.getContext("2d");
-                artCtx.fillStyle = "#ffffff";
-                artCtx.fillRect(
+            if (
+                art &&
+                artCtxRef.current
+            ) {
+                artCtxRef.current.fillStyle =
+                    "#ffffff";
+                artCtxRef.current.fillRect(
                     0,
                     0,
                     art.width,
                     art.height
                 );
-                artCtx.drawImage(
+                artCtxRef.current.drawImage(
                     img,
                     offsetX,
                     offsetY,
@@ -450,10 +495,8 @@ export default function ASCIIPainter() {
     const toASCII = () => {
         const source = artRef.current;
         const g = ghostRef.current;
-        if (!source || !g) return;
-        const gctx = g.getContext("2d", {
-            willReadFrequently: true,
-        });
+        const gctx = ghostCtxRef.current;
+        if (!source || !g || !gctx) return;
 
         const cellW = Math.max(
             1,
@@ -484,11 +527,11 @@ export default function ASCIIPainter() {
         const data = img.data;
         const chars = charset;
 
-        let result = "";
-        let colorResult = "";
+        const asciiRows = new Array(outH);
+        const colorRows = new Array(outH);
         for (let y = 0; y < outH; y++) {
-            let row = "";
-            let colorRow = "";
+            const rowChars = new Array(outW);
+            const colorChars = new Array(outW);
             for (let x = 0; x < outW; x++) {
                 const idx = (y * outW + x) * 4;
                 const r = data[idx];
@@ -511,16 +554,24 @@ export default function ASCIIPainter() {
                     lum * (chars.length - 1)
                 );
                 const char = chars[ci];
-                row += char;
-                colorRow += `<span style="color: rgb(${r}, ${g}, ${b})">${escapeForHtml(
+                rowChars[x] = char;
+                colorChars[
+                    x
+                ] = `<span style="color: rgb(${r}, ${g}, ${b})">${escapeForHtml(
                     char
                 )}</span>`;
             }
-            result += row + "\n";
-            colorResult += colorRow + "\n";
+            asciiRows[y] = rowChars.join("");
+            colorRows[y] = colorChars.join("");
         }
-        setAscii(result);
-        setColorAsciiHtml(colorResult);
+        const asciiOutput = asciiRows.join("\n");
+        const colorOutput = colorRows.join("\n");
+        setAscii(
+            asciiOutput ? asciiOutput + "\n" : ""
+        );
+        setColorAsciiHtml(
+            colorOutput ? colorOutput + "\n" : ""
+        );
         setShowDialog(true);
     };
 
@@ -861,8 +912,25 @@ export default function ASCIIPainter() {
             <Dialog
                 open={showIntro}
                 onOpenChange={setShowIntro}>
-                <DialogContent className="w-full max-w-3xl rounded-[1em] border-0 bg-slate-50/95 p-0 text-slate-900 shadow-2xl"
-                    style={{ borderRadius: "1em" }}>
+                <DialogContent
+                    className={`w-full max-w-3xl rounded-[1em] border-0 bg-slate-50/95 p-0 text-slate-900 shadow-2xl ${
+                        isMobile
+                            ? "h-screen max-h-screen overflow-y-auto"
+                            : ""
+                    }`}
+                    style={{
+                        borderRadius: "1em",
+                        ...(isMobile
+                            ? {
+                                  left: 0,
+                                  top: 0,
+                                  width: "100vw",
+                                  height: "100vh",
+                                  maxHeight: "100vh",
+                                  transform: "none",
+                              }
+                            : {}),
+                    }}>
                     <div className="space-y-6 p-6 sm:p-8">
                         <DialogHeader className="space-y-3 text-center">
                             <DialogTitle className="text-2xl font-semibold">
@@ -921,6 +989,15 @@ export default function ASCIIPainter() {
                             }>
                             Start Creating
                         </Button>
+                        <a
+                            href="https://github.com/Gerard-Devlin/PixelMuse"
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mx-auto flex items-center justify-center gap-2 text-xs text-slate-500 hover:text-slate-700 transition-colors"
+                            aria-label="View the PixelMuse repository on GitHub">
+                            <Github className="h-3.5 w-3.5" />
+                            Gerard-Devlin/PixelMuse
+                        </a>
                     </div>
                 </DialogContent>
             </Dialog>
@@ -932,7 +1009,7 @@ export default function ASCIIPainter() {
                 <DialogContent
                     className={`w-full max-w-none overflow-hidden bg-white text-slate-900 border shadow-2xl p-0 flex flex-col rounded-[1em] ${
                         isMobile
-                            ? "h-screen max-h-screen left-0 top-0 translate-x-0 translate-y-0"
+                            ? "h-screen max-h-screen overflow-y-auto"
                             : "max-h-[90vh]"
                     }`}
                     style={{
@@ -943,6 +1020,14 @@ export default function ASCIIPainter() {
                             ? "100vh"
                             : undefined,
                         borderRadius: "1em",
+                        ...(isMobile
+                            ? {
+                                  left: 0,
+                                  top: 0,
+                                  transform:
+                                      "none",
+                              }
+                            : {}),
                     }}>
                     <div
                         className={
