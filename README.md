@@ -10,7 +10,9 @@ Turn sketches or reference images into clean ASCII artwork directly in the brows
 
 -   Drawing canvas with brush, eraser, and image import support (mouse + touch)
 -   Live ASCII preview with columns, density, line-height, and charset presets
--   Export helpers for TXT and HTML (monochrome and color) plus clipboard shortcuts
+-   Export helpers for TXT, HTML, SVG, and PNG (monochrome and color) plus clipboard shortcuts
+-   Copy/download popovers with iconized actions and adjustable PNG sizing for precise exports
+-   Non-blocking ASCII conversion: large column counts render in chunks to keep the UI responsive
 -   Friendly onboarding dialog and responsive layout powered by shadcn/ui + Tailwind
 -   Optimized canvas + ASCII pipeline (batched redraws, cached contexts)
 
@@ -42,5 +44,6 @@ npm run deploy   # publish to GitHub Pages (gh-pages)
 -   Canvas contexts are cached and resize work is throttled via requestAnimationFrame
 -   ASCII conversion uses array buffers instead of repeated string concatenation
 -   Dialogs and previews share responsive sizing logic for smoother mobile rendering
+-   Heavy ASCII generation is chunked via requestAnimationFrame to avoid main-thread stalls
 
 Open the app, upload or sketch, tweak the sliders, and share ASCII art in seconds.
