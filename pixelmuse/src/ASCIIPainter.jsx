@@ -33,6 +33,10 @@ import {
     Upload,
     Copy,
     Github,
+    Download,
+    Palette,
+    Code,
+    PenTool,
     Image as ImageIcon,
 } from "lucide-react";
 
@@ -80,6 +84,15 @@ const escapeForHtml = (char) => {
     if (char === '"') return "&quot;";
     if (char === "'") return "&#39;";
     if (char === " ") return "&nbsp;";
+    return char;
+};
+
+const escapeForSvg = (char) => {
+    if (char === "&") return "&amp;";
+    if (char === "<") return "&lt;";
+    if (char === ">") return "&gt;";
+    if (char === '"') return "&quot;";
+    if (char === "'") return "&#39;";
     return char;
 };
 
@@ -185,6 +198,77 @@ const buildColorAsciiDocument = (
 </html>`;
 };
 
+const PNG_EXPORT_SIZES = [
+    { label: "Compact", value: 0.75 },
+    { label: "Default", value: 1 },
+    { label: "Large", value: 1.5 },
+    { label: "XL", value: 2 },
+];
+
+const buildAsciiSvgDocument = ({
+    lines,
+    fontSize,
+    lineHeight,
+    colorMatrix,
+    background = "#ffffff",
+    foreground = "#0f172a",
+}) => {
+    const padding = 24;
+    const charWidth =
+        fontSize * ASCII_CHAR_ASPECT_RATIO;
+    const lineHeightPx = fontSize * lineHeight;
+    const maxColumns = lines.reduce(
+        (max, line) => Math.max(max, line.length),
+        0
+    );
+    const width =
+        Math.max(1, maxColumns * charWidth) +
+        padding * 2;
+    const height =
+        Math.max(1, lines.length * lineHeightPx) +
+        padding * 2;
+    const fontFamily =
+        "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace";
+
+    const elements = [];
+    for (let y = 0; y < lines.length; y++) {
+        const row = lines[y];
+        const rowCells = colorMatrix?.[y];
+        const yPos = padding + y * lineHeightPx;
+        for (let x = 0; x < row.length; x++) {
+            const char = row[x];
+            if (char === " ") continue;
+            const color =
+                rowCells?.[x]?.color ??
+                foreground;
+            const xPos = padding + x * charWidth;
+            elements.push(
+                `<text x="${xPos.toFixed(
+                    2
+                )}" y="${yPos.toFixed(
+                    2
+                )}" fill="${color}" dominant-baseline="hanging">${escapeForSvg(
+                    char
+                )}</text>`
+            );
+        }
+    }
+
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${width.toFixed(
+        2
+    )}" height="${height.toFixed(
+        2
+    )}" viewBox="0 0 ${width.toFixed(
+        2
+    )} ${height.toFixed(
+        2
+    )}" font-family="${fontFamily}" font-size="${fontSize}" xml:space="preserve">
+  <rect width="100%" height="100%" fill="${background}" />
+  ${elements.join("\n  ")}
+</svg>`;
+};
+
 export default function ASCIIPainter() {
     const canvasRef = useRef(null);
     const ghostRef = useRef(null);
@@ -220,6 +304,9 @@ export default function ASCIIPainter() {
 
     const [isMobile, setIsMobile] =
         useState(false);
+    const [showPngDialog, setShowPngDialog] =
+        useState(false);
+    const [pngScale, setPngScale] = useState(1);
 
     const asciiFontSize = useMemo(() => {
         const safeColumns = Math.max(1, columns);
@@ -282,6 +369,14 @@ export default function ASCIIPainter() {
             display: "inline-block",
         }),
         [asciiFontSize, asciiLineHeight, isMobile]
+    );
+
+    const hasAsciiOutput = useMemo(
+        () => ascii.trim().length > 0,
+        [ascii]
+    );
+    const hasColorOutput = Boolean(
+        colorAsciiHtml
     );
 
     const PRESETS = {
@@ -628,7 +723,7 @@ export default function ASCIIPainter() {
         URL.revokeObjectURL(url);
     };
 
-    const downloadAsciiJpeg = () => {
+    const downloadAsciiPng = (scale = 1) => {
         const trimmed = ascii.replace(/\n+$/, "");
         if (!trimmed) return;
         const lines = trimmed.split("\n");
@@ -643,10 +738,12 @@ export default function ASCIIPainter() {
         const paddingY = 32;
         const fontFamily =
             '"JetBrains Mono", "Fira Code", "Cascadia Code", monospace';
-        const fontSpec = `${asciiFontSize}px ${fontFamily}`;
+        const exportFontSize =
+            asciiFontSize * scale;
+        const fontSpec = `${exportFontSize}px ${fontFamily}`;
         ctx.font = fontSpec;
         const lineHeightPx =
-            asciiFontSize * asciiLineHeight;
+            exportFontSize * asciiLineHeight;
         const widths = lines.map((line) =>
             Math.ceil(
                 ctx.measureText(line || " ").width
@@ -678,7 +775,7 @@ export default function ASCIIPainter() {
 
         const baseCharWidth =
             ctx.measureText("M").width ||
-            asciiFontSize *
+            exportFontSize *
                 ASCII_CHAR_ASPECT_RATIO;
 
         if (
@@ -735,12 +832,41 @@ export default function ASCIIPainter() {
         }
 
         const link = document.createElement("a");
-        link.href = canvas.toDataURL(
-            "image/jpeg",
-            0.92
-        );
-        link.download = "ascii_art.jpg";
+        link.href = canvas.toDataURL("image/png");
+        link.download = "ascii_art.png";
         link.click();
+    };
+
+    const downloadAsciiSvg = () => {
+        const trimmed = ascii.replace(/\n+$/, "");
+        if (!trimmed) return;
+        const lines = trimmed.split("\n");
+        const svg = buildAsciiSvgDocument({
+            lines,
+            fontSize: asciiFontSize,
+            lineHeight: asciiLineHeight,
+            colorMatrix:
+                colorAsciiHtml &&
+                colorMatrixRef.current
+                    ? colorMatrixRef.current
+                    : null,
+        });
+        const blob = new Blob([svg], {
+            type: "image/svg+xml",
+        });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "ascii_art.svg";
+        link.click();
+        URL.revokeObjectURL(url);
+    };
+
+    const handleConfirmPngDownload = () => {
+        setShowPngDialog(false);
+        requestAnimationFrame(() =>
+            downloadAsciiPng(pngScale)
+        );
     };
 
     return (
@@ -1231,40 +1357,13 @@ export default function ASCIIPainter() {
                                     ? "sm:flex-col sm:gap-2"
                                     : ""
                             }`}>
-                            <Button
-                                variant="outline"
-                                onClick={
-                                    copyAscii
-                                }
-                                className={
-                                    isMobile
-                                        ? "w-full justify-center"
-                                        : undefined
-                                }>
-                                <Copy className="w-4 h-4 mr-1" />{" "}
-                                {!isMobile &&
-                                    "Copy Text"}
-                            </Button>
-                            <Button
-                                variant="outline"
-                                onClick={
-                                    downloadAscii
-                                }
-                                className={
-                                    isMobile
-                                        ? "w-full justify-center"
-                                        : undefined
-                                }>
-                                <FileText className="w-4 h-4 mr-1" />{" "}
-                                {!isMobile &&
-                                    "Download TXT"}
-                            </Button>
-                            {colorAsciiHtml && (
-                                <>
+                            <Popover>
+                                <PopoverTrigger
+                                    asChild>
                                     <Button
                                         variant="outline"
-                                        onClick={
-                                            copyColorAscii
+                                        disabled={
+                                            !hasAsciiOutput
                                         }
                                         className={
                                             isMobile
@@ -1273,40 +1372,186 @@ export default function ASCIIPainter() {
                                         }>
                                         <Copy className="w-4 h-4 mr-1" />{" "}
                                         {!isMobile &&
-                                            "Copy Color HTML"}
+                                            "Copy"}
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-48 space-y-2 rounded-xl">
+                                    <Button
+                                        variant="outline"
+                                        className="w-full justify-start gap-2"
+                                        disabled={
+                                            !hasAsciiOutput
+                                        }
+                                        onClick={
+                                            copyAscii
+                                        }>
+                                        <FileText className="w-4 h-4" />
+                                        ASCII Text
                                     </Button>
                                     <Button
                                         variant="outline"
+                                        className="w-full justify-start gap-2"
+                                        disabled={
+                                            !hasColorOutput
+                                        }
                                         onClick={
-                                            downloadColorAscii
+                                            copyColorAscii
+                                        }>
+                                        <Palette className="w-4 h-4" />
+                                        Color HTML
+                                    </Button>
+                                </PopoverContent>
+                            </Popover>
+                            <Popover>
+                                <PopoverTrigger
+                                    asChild>
+                                    <Button
+                                        variant="outline"
+                                        disabled={
+                                            !hasAsciiOutput
                                         }
                                         className={
                                             isMobile
                                                 ? "w-full justify-center"
                                                 : undefined
                                         }>
-                                        <FileText className="w-4 h-4 mr-1" />{" "}
+                                        <Download className="w-4 h-4 mr-1" />{" "}
                                         {!isMobile &&
-                                            "Download HTML"}
+                                            "Download"}
                                     </Button>
-                                </>
-                            )}
-                            <Button
-                                variant="outline"
-                                onClick={
-                                    downloadAsciiJpeg
-                                }
-                                className={
-                                    isMobile
-                                        ? "w-full justify-center"
-                                        : undefined
-                                }>
-                                <ImageIcon className="w-4 h-4 mr-1" />{" "}
-                                {!isMobile &&
-                                    "Download JPG"}
-                            </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-48 space-y-2 rounded-xl">
+                                    <Button
+                                        variant="outline"
+                                        className="w-full justify-start gap-2"
+                                        disabled={
+                                            !hasAsciiOutput
+                                        }
+                                        onClick={
+                                            downloadAscii
+                                        }>
+                                        <FileText className="w-4 h-4" />
+                                        TXT
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        className="w-full justify-start gap-2"
+                                        disabled={
+                                            !hasColorOutput
+                                        }
+                                        onClick={
+                                            downloadColorAscii
+                                        }>
+                                        <Code className="w-4 h-4" />
+                                        HTML
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        className="w-full justify-start gap-2"
+                                        disabled={
+                                            !hasAsciiOutput
+                                        }
+                                        onClick={
+                                            downloadAsciiSvg
+                                        }>
+                                        <PenTool className="w-4 h-4" />
+                                        SVG
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        className="w-full justify-start gap-2"
+                                        disabled={
+                                            !hasAsciiOutput
+                                        }
+                                        onClick={() =>
+                                            setShowPngDialog(
+                                                true
+                                            )
+                                        }>
+                                        <ImageIcon className="w-4 h-4" />
+                                        PNG
+                                    </Button>
+                                </PopoverContent>
+                            </Popover>
                         </DialogFooter>
                     </div>
+                </DialogContent>
+            </Dialog>
+            <Dialog
+                open={showPngDialog}
+                onOpenChange={setShowPngDialog}>
+                <DialogContent className="max-w-md text-slate-900">
+                    <DialogHeader>
+                        <DialogTitle>
+                            Choose PNG Size
+                        </DialogTitle>
+                        <p className="text-sm text-slate-500">
+                            Larger sizes increase
+                            export resolution.
+                        </p>
+                    </DialogHeader>
+                    <div className="space-y-3 py-2">
+                        {PNG_EXPORT_SIZES.map(
+                            ({
+                                label,
+                                value,
+                            }) => (
+                                <label
+                                    key={value}
+                                    className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
+                                    <div>
+                                        <p className="font-medium">
+                                            {
+                                                label
+                                            }
+                                        </p>
+                                        <p className="text-xs text-slate-500">
+                                            {`${Math.round(
+                                                value *
+                                                    100
+                                            )}% of current preview`}
+                                        </p>
+                                    </div>
+                                    <input
+                                        type="radio"
+                                        name="png-scale"
+                                        value={
+                                            value
+                                        }
+                                        checked={
+                                            pngScale ===
+                                            value
+                                        }
+                                        onChange={() =>
+                                            setPngScale(
+                                                value
+                                            )
+                                        }
+                                    />
+                                </label>
+                            )
+                        )}
+                    </div>
+                    <DialogFooter className="flex gap-3">
+                        <Button
+                            variant="outline"
+                            onClick={() =>
+                                setShowPngDialog(
+                                    false
+                                )
+                            }>
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={
+                                handleConfirmPngDownload
+                            }
+                            disabled={
+                                !hasAsciiOutput
+                            }>
+                            Download
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
         </div>
