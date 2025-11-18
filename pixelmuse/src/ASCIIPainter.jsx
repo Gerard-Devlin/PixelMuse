@@ -600,7 +600,8 @@ export default function ASCIIPainter() {
         const source = artRef.current;
         const g = ghostRef.current;
         const gctx = ghostCtxRef.current;
-        if (!source || !g || !gctx) return;
+        if (!source || !g || !gctx || isGenerating)
+            return;
 
         const cellW = Math.max(
             1,
@@ -610,11 +611,13 @@ export default function ASCIIPainter() {
             1,
             Math.floor(cellW * lineHeightRatio)
         );
-        const outW = Math.floor(
-            source.width / cellW
+        const outW = Math.max(
+            1,
+            Math.floor(source.width / cellW)
         );
-        const outH = Math.floor(
-            source.height / cellH
+        const outH = Math.max(
+            1,
+            Math.floor(source.height / cellH)
         );
 
         g.width = outW;
@@ -630,63 +633,101 @@ export default function ASCIIPainter() {
         );
         const data = img.data;
         const chars = charset;
-
         const asciiRows = new Array(outH);
         const colorRows = new Array(outH);
         const colorMatrix = new Array(outH);
-        for (let y = 0; y < outH; y++) {
-            const rowChars = new Array(outW);
-            const colorChars = new Array(outW);
-            const rowCells = new Array(outW);
-            for (let x = 0; x < outW; x++) {
-                const idx = (y * outW + x) * 4;
-                const r = data[idx];
-                const g = data[idx + 1];
-                const b = data[idx + 2];
-                let lum =
-                    0.299 * r +
-                    0.587 * g +
-                    0.114 * b;
-                lum = Math.min(
-                    1,
-                    Math.max(
-                        0,
-                        lum / 255 +
-                            densityBias / 100
-                    )
-                );
-                if (!invert) lum = 1 - lum;
-                const ci = Math.round(
-                    lum * (chars.length - 1)
-                );
-                const char = chars[ci];
-                rowChars[x] = char;
-                colorChars[
-                    x
-                ] = `<span style="color: rgb(${r}, ${g}, ${b})">${escapeForHtml(
-                    char
-                )}</span>`;
-                rowCells[x] = {
-                    char,
-                    color: `rgb(${r}, ${g}, ${b})`,
-                };
+
+        const targetCellsPerChunk = 48000;
+        const rowsPerChunk = Math.max(
+            1,
+            Math.min(
+                outH,
+                Math.floor(
+                    targetCellsPerChunk /
+                        Math.max(outW, 1)
+                ) || 1
+            )
+        );
+
+        const jobId = generationIdRef.current + 1;
+        generationIdRef.current = jobId;
+        setIsGenerating(true);
+
+        const processChunk = (startRow) => {
+            if (generationIdRef.current !== jobId)
+                return;
+            const endRow = Math.min(
+                outH,
+                startRow + rowsPerChunk
+            );
+            for (let y = startRow; y < endRow; y++) {
+                const rowChars = new Array(outW);
+                const colorChars = new Array(outW);
+                const rowCells = new Array(outW);
+                const rowOffset = y * outW;
+                for (let x = 0; x < outW; x++) {
+                    const idx = (rowOffset + x) * 4;
+                    const r = data[idx];
+                    const g = data[idx + 1];
+                    const b = data[idx + 2];
+                    let lum =
+                        0.299 * r +
+                        0.587 * g +
+                        0.114 * b;
+                    lum = Math.min(
+                        1,
+                        Math.max(
+                            0,
+                            lum / 255 +
+                                densityBias / 100
+                        )
+                    );
+                    if (!invert) lum = 1 - lum;
+                    const ci = Math.round(
+                        lum * (chars.length - 1)
+                    );
+                    const char = chars[ci];
+                    rowChars[x] = char;
+                    colorChars[
+                        x
+                    ] = `<span style="color: rgb(${r}, ${g}, ${b})">${escapeForHtml(
+                        char
+                    )}</span>`;
+                    rowCells[x] = {
+                        char,
+                        color: `rgb(${r}, ${g}, ${b})`,
+                    };
+                }
+                asciiRows[y] = rowChars.join("");
+                colorRows[y] = colorChars.join("");
+                colorMatrix[y] = rowCells;
             }
-            asciiRows[y] = rowChars.join("");
-            colorRows[y] = colorChars.join("");
-            colorMatrix[y] = rowCells;
-        }
-        const asciiOutput = asciiRows.join("\n");
-        const colorOutput = colorRows.join("\n");
-        setAscii(
-            asciiOutput ? asciiOutput + "\n" : ""
-        );
-        setColorAsciiHtml(
-            colorOutput ? colorOutput + "\n" : ""
-        );
-        colorMatrixRef.current = asciiOutput
-            ? colorMatrix
-            : null;
-        setShowDialog(true);
+
+            if (endRow < outH) {
+                requestAnimationFrame(() =>
+                    processChunk(endRow)
+                );
+                return;
+            }
+
+            const asciiOutput = asciiRows.join("\n");
+            const colorOutput = colorRows.join("\n");
+            if (generationIdRef.current === jobId) {
+                setAscii(
+                    asciiOutput ? asciiOutput + "\n" : ""
+                );
+                setColorAsciiHtml(
+                    colorOutput ? colorOutput + "\n" : ""
+                );
+                colorMatrixRef.current = asciiOutput
+                    ? colorMatrix
+                    : null;
+                setIsGenerating(false);
+                setShowDialog(true);
+            }
+        };
+
+        processChunk(0);
     };
 
     const copyAscii = () =>
@@ -1157,14 +1198,28 @@ export default function ASCIIPainter() {
                 </Popover>
                 <Button
                     onClick={toASCII}
+                    disabled={isGenerating}
                     className={`bg-slate-900 text-white shadow-md rounded-full ${
                         isMobile
                             ? "w-10 h-10 p-0"
                             : "px-5 py-2"
+                    } ${
+                        isGenerating
+                            ? "opacity-80 cursor-not-allowed"
+                            : ""
                     }`}>
-                    <FileText className="w-4 h-4 mx-auto" />{" "}
-                    {!isMobile &&
-                        "Generate ASCII"}
+                    {isGenerating ? (
+                        <span className="flex items-center gap-2 text-sm font-medium">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            {!isMobile && "Processing..."}
+                        </span>
+                    ) : (
+                        <>
+                            <FileText className="w-4 h-4 mx-auto" />{" "}
+                            {!isMobile &&
+                                "Generate ASCII"}
+                        </>
+                    )}
                 </Button>
             </div>
 
