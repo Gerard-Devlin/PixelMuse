@@ -38,6 +38,7 @@ import {
     Code,
     PenTool,
     Image as ImageIcon,
+    Loader2,
 } from "lucide-react";
 
 function drawDots(
@@ -281,6 +282,7 @@ export default function ASCIIPainter() {
     const ghostCtxRef = useRef(null);
     const resizeFrameRef = useRef(null);
     const colorMatrixRef = useRef(null);
+    const generationIdRef = useRef(0);
 
     const [brushColor, setBrushColor] =
         useState("#000000");
@@ -303,6 +305,8 @@ export default function ASCIIPainter() {
         useState(true);
 
     const [isMobile, setIsMobile] =
+        useState(false);
+    const [isGenerating, setIsGenerating] =
         useState(false);
     const [showPngDialog, setShowPngDialog] =
         useState(false);
@@ -511,6 +515,8 @@ export default function ASCIIPainter() {
     };
 
     const clearCanvas = () => {
+        generationIdRef.current += 1;
+        setIsGenerating(false);
         const c = canvasRef.current;
         if (canvasCtxRef.current && c) {
             drawDots(
