@@ -33,6 +33,7 @@ import {
     Upload,
     Copy,
     Github,
+    Image as ImageIcon,
 } from "lucide-react";
 
 function drawDots(
@@ -156,12 +157,14 @@ const buildColorAsciiDocument = (
         background: #f8fafc;
         color: #0f172a;
         margin: 0;
-        padding: 24px;
+        min-height: 100vh;
+        padding: clamp(24px, 5vw, 72px);
         display: flex;
         justify-content: center;
+        align-items: center;
       }
       .ascii-wrapper {
-        width: min(100%, ${ASCII_TARGET_WIDTH}px);
+        width: min(100%, 1400px);
       }
       pre {
         font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
@@ -170,6 +173,7 @@ const buildColorAsciiDocument = (
         margin: 0;
         white-space: pre;
         overflow: auto;
+        width: 100%;
       }
     </style>
   </head>
@@ -192,6 +196,7 @@ export default function ASCIIPainter() {
     const artCtxRef = useRef(null);
     const ghostCtxRef = useRef(null);
     const resizeFrameRef = useRef(null);
+    const colorMatrixRef = useRef(null);
 
     const [brushColor, setBrushColor] =
         useState("#000000");
@@ -432,6 +437,7 @@ export default function ASCIIPainter() {
         }
         setAscii("");
         setColorAsciiHtml("");
+        colorMatrixRef.current = null;
     };
 
     const handleUpload = (file) => {
@@ -461,10 +467,7 @@ export default function ASCIIPainter() {
                 newH
             );
             const art = artRef.current;
-            if (
-                art &&
-                artCtxRef.current
-            ) {
+            if (art && artCtxRef.current) {
                 artCtxRef.current.fillStyle =
                     "#ffffff";
                 artCtxRef.current.fillRect(
@@ -529,9 +532,11 @@ export default function ASCIIPainter() {
 
         const asciiRows = new Array(outH);
         const colorRows = new Array(outH);
+        const colorMatrix = new Array(outH);
         for (let y = 0; y < outH; y++) {
             const rowChars = new Array(outW);
             const colorChars = new Array(outW);
+            const rowCells = new Array(outW);
             for (let x = 0; x < outW; x++) {
                 const idx = (y * outW + x) * 4;
                 const r = data[idx];
@@ -560,9 +565,14 @@ export default function ASCIIPainter() {
                 ] = `<span style="color: rgb(${r}, ${g}, ${b})">${escapeForHtml(
                     char
                 )}</span>`;
+                rowCells[x] = {
+                    char,
+                    color: `rgb(${r}, ${g}, ${b})`,
+                };
             }
             asciiRows[y] = rowChars.join("");
             colorRows[y] = colorChars.join("");
+            colorMatrix[y] = rowCells;
         }
         const asciiOutput = asciiRows.join("\n");
         const colorOutput = colorRows.join("\n");
@@ -572,6 +582,9 @@ export default function ASCIIPainter() {
         setColorAsciiHtml(
             colorOutput ? colorOutput + "\n" : ""
         );
+        colorMatrixRef.current = asciiOutput
+            ? colorMatrix
+            : null;
         setShowDialog(true);
     };
 
@@ -613,6 +626,121 @@ export default function ASCIIPainter() {
         a.download = "ascii_art_color.html";
         a.click();
         URL.revokeObjectURL(url);
+    };
+
+    const downloadAsciiJpeg = () => {
+        const trimmed = ascii.replace(/\n+$/, "");
+        if (!trimmed) return;
+        const lines = trimmed.split("\n");
+        if (!lines.length) return;
+
+        const canvas =
+            document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+
+        const paddingX = 32;
+        const paddingY = 32;
+        const fontFamily =
+            '"JetBrains Mono", "Fira Code", "Cascadia Code", monospace';
+        const fontSpec = `${asciiFontSize}px ${fontFamily}`;
+        ctx.font = fontSpec;
+        const lineHeightPx =
+            asciiFontSize * asciiLineHeight;
+        const widths = lines.map((line) =>
+            Math.ceil(
+                ctx.measureText(line || " ").width
+            )
+        );
+        const maxWidth =
+            widths.length > 0
+                ? Math.max(...widths, 1)
+                : 1;
+
+        canvas.width = Math.ceil(
+            maxWidth + paddingX * 2
+        );
+        canvas.height = Math.ceil(
+            lineHeightPx * lines.length +
+                paddingY * 2
+        );
+
+        ctx.font = fontSpec;
+        ctx.textBaseline = "top";
+        ctx.textAlign = "left";
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(
+            0,
+            0,
+            canvas.width,
+            canvas.height
+        );
+
+        const baseCharWidth =
+            ctx.measureText("M").width ||
+            asciiFontSize *
+                ASCII_CHAR_ASPECT_RATIO;
+
+        if (
+            colorAsciiHtml &&
+            colorMatrixRef.current
+        ) {
+            const matrix = colorMatrixRef.current;
+            for (
+                let y = 0;
+                y < lines.length;
+                y++
+            ) {
+                const row = matrix[y] || [];
+                const yPos =
+                    paddingY + y * lineHeightPx;
+                let cursorX = paddingX;
+                for (
+                    let x = 0;
+                    x < row.length;
+                    x++
+                ) {
+                    const cell = row[x];
+                    const glyph =
+                        cell?.char ?? " ";
+                    ctx.fillStyle =
+                        cell?.color ?? "#0f172a";
+                    ctx.fillText(
+                        glyph,
+                        cursorX,
+                        yPos
+                    );
+                    const advance =
+                        ctx.measureText(glyph)
+                            .width ||
+                        baseCharWidth;
+                    cursorX += advance;
+                }
+            }
+        } else {
+            ctx.fillStyle = "#0f172a";
+            for (
+                let i = 0;
+                i < lines.length;
+                i++
+            ) {
+                const yPos =
+                    paddingY + i * lineHeightPx;
+                ctx.fillText(
+                    lines[i],
+                    paddingX,
+                    yPos
+                );
+            }
+        }
+
+        const link = document.createElement("a");
+        link.href = canvas.toDataURL(
+            "image/jpeg",
+            0.92
+        );
+        link.download = "ascii_art.jpg";
+        link.click();
     };
 
     return (
@@ -926,8 +1054,10 @@ export default function ASCIIPainter() {
                                   top: 0,
                                   width: "100vw",
                                   height: "100vh",
-                                  maxHeight: "100vh",
-                                  transform: "none",
+                                  maxHeight:
+                                      "100vh",
+                                  transform:
+                                      "none",
                               }
                             : {}),
                     }}>
@@ -1161,6 +1291,20 @@ export default function ASCIIPainter() {
                                     </Button>
                                 </>
                             )}
+                            <Button
+                                variant="outline"
+                                onClick={
+                                    downloadAsciiJpeg
+                                }
+                                className={
+                                    isMobile
+                                        ? "w-full justify-center"
+                                        : undefined
+                                }>
+                                <ImageIcon className="w-4 h-4 mr-1" />{" "}
+                                {!isMobile &&
+                                    "Download JPG"}
+                            </Button>
                         </DialogFooter>
                     </div>
                 </DialogContent>
